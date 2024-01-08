@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "elocator"
+version = "0.1.0"
+description = "A project to help identify the Elo of a chess player based on a set of moves or games. Can be used to identify cheating, game throwing, or other anomalies in a players game."
+authors = ["Caleb Wetherell <cmwetherell@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
