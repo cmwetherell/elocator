@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elocator: Chess Complexity Calculator</title>
+    <link rel="stylesheet"
+      href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
+      integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU"
+      crossorigin="anonymous">
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #fenInput { margin-bottom: 20px; }
+        #board { width: 400px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Chess Complexity Calculator</h1>
+
+    <h3>Enter a FEN string to calculate the complexity of the position.</h3>
+    <input type="text" id="fenInput" placeholder="Enter FEN string here" style="width: 400px", value = "4rk2/ppp1qppp/3p2R1/8/4P3/2Q1R2P/PPP2PP1/6K1 b - - 0 1" />
+    <button onclick="submitFEN()">Submit</button>
+    <div id="board"></div>
+    <h2 id="complexityScore"></h2>
+
+    <h2>What can you expect from this site in the future?</h2>
+
+    </p>My goal is to create a suite of tools which allow you to evaluate the complexity of a position, evaluate a players prformance in a game relative to the complexity of the postitions they encountered, evaluate a performance across an entire performance, and use those tools to help find outliers (e.g., cheating).</p>
+
+    <p>You can see the code for all this work here: <a href="https://github.com/cmwetherell/elocator">Elocator GitHub</a>. Please consider contributing!</p>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+        integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2"
+        crossorigin="anonymous"></script>
+
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
+        integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
+        crossorigin="anonymous"></script>
+    <script src="script.js"></script>
+</body>
+</html>
