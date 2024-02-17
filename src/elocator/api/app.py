@@ -5,7 +5,8 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 base_dir = Path(__file__).resolve().parent
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import torch
@@ -13,8 +14,43 @@ import numpy as np
 from model_build import ChessModel
 from utils import fen_encoder, parse_pgn, analyze_positions
 from api.data_models import ComplexityRequest, GameRequest
+import logging
+import time
+import json
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("ElocatorAPI")
 
 app = FastAPI()
+
+class LoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Log request details
+        request_body = await request.body()
+        try:
+            request_body_json = json.loads(request_body.decode("utf-8"))
+        except json.JSONDecodeError:
+            request_body_json = "Unable to decode JSON"
+
+        logger.info(f"Request path: {request.url.path}, Method: {request.method}, Body: {request_body_json}")
+
+        # Time the request
+        start_time = time.time()
+
+        # Call the next middleware or endpoint
+        response = await call_next(request)
+
+        # Calculate request processing time
+        process_time = time.time() - start_time
+
+        # Log response details
+        logger.info(f"Response status: {response.status_code}, Time: {process_time}s")
+
+        return response
+
+# Add the middleware
+app.add_middleware(LoggingMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
