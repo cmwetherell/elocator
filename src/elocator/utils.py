@@ -1,8 +1,12 @@
 'utility module for Elocator'
 
+import io
 import numpy as np
 import math
 import chess
+import chess.pgn
+import chess.engine
+from typing import Union, List, Tuple, Dict
 
 default_fen = "rnbqkbnr/p1p1pppp/3p4/Pp6/8/8/1PPPPPPP/RNBQKBNR b KQkq b6 0 3"
 
@@ -241,6 +245,54 @@ def int_to_ep_square(idx):
     }
     return ep_square_map.get(idx, '-')
 
+def parse_pgn(pgn: str) -> Tuple[Dict, List]: # type: ignore
+    """Parse a PGN string into a list of moves, extract headers into dict.
+
+    Args:
+        pgn (str): PGN string of the game.
+
+    Returns:
+        list:tuple of headers and a List of FENs.
+    """
+    pgn = io.StringIO(pgn)
+    game = chess.pgn.read_game(pgn)
+    headers = dict(game.headers)
+    FENs = []
+    board = game.board()
+    FENs.append(board.fen()) # push default fen
+    for move in game.mainline_moves():
+        board.push(move)
+        FENs.append(board.fen())
+    return headers, FENs
+
+def analyze_positions(fens: Union[str, List[str]]) -> List[float]:
+    # TODO: Combine this with the FEN generator so we dont make a billion chess boards.
+    """Analyze a position or positions and return the evaluation scores.
+
+    Args:
+        fens (Union[str, List[str]]): A single FEN string or a list of FEN strings of the positions.
+
+    Returns:
+        List[float]: Evaluation scores of the positions.
+    """
+    stockfish_path = "/usr/local/bin/stockfish/stockfish-ubuntu-x86-64"
+    engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
+
+    # Ensure fens is a list even if a single FEN string is provided
+    if isinstance(fens, str):
+        fens = [fens]
+
+    evaluations = []
+
+    for fen in fens:
+        board = chess.Board(fen)
+        info = engine.analyse(board, chess.engine.Limit(depth=20))  # Adjust time limit as needed
+        evaluation = info["score"].white().score(mate_score=10000)  # Use a large number for mate score
+        evaluations.append(evaluation if evaluation is not None else 0)
+
+    engine.quit()
+    return evaluations
+
 if __name__ == "__main__":
     # Example usage:
     encoded = fen_encoder(default_fen)
@@ -250,3 +302,23 @@ if __name__ == "__main__":
     print("Decoded FEN:", decoded_fen)
 
     print(flip_fen(default_fen))
+
+    sample_pgn = '''[Event "F/S Return Match"]
+[Site "Belgrade, Serbia JUG"]
+[Date "1992.11.04"]
+[Round "29"]
+[White "Fischer, Robert J."]
+[Black "Spassky, Boris V."]
+[Result "1/2-1/2"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bb5 {This opening is called the Ruy Lopez.} 3... a6
+4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 10. d4 Nbd7
+11. c4 c6 12. cxb5 axb5 13. Nc3 Bb7 14. Bg5 b4 15. Nb1 h6 16. Bh4 c5 17. dxe5
+Nxe4 18. Bxe7 Qxe7 19. exd6 Qf6 20. Nbd2 Nxd6 21. Nc4 Nxc4 22. Bxc4 Nb6
+23. Ne5 Rae8 24. Bxf7+ Rxf7 25. Nxf7 Rxe1+ 26. Qxe1 Kxf7 27. Qe3 Qg5 28. Qxg5
+hxg5 29. b3 Ke6 30. a3 Kd6 31. axb4 cxb4 32. Ra5 Nd5 33. f3 Bc8 34. Kf2 Bf5
+35. Ra7 g6 36. Ra6+ Kc5 37. Ke1 Nf4 38. g3 Nxh3 39. Kd2 Kb5 40. Rd6 Kc5 41. Ra6
+Nf2 42. g4 Bd3 43. Re6 1/2-1/2'''
+    headers, FENs = parse_pgn(sample_pgn)
+    print("Headers:", headers)
+    print("FENs:", FENs)

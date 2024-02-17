@@ -11,7 +11,8 @@ from pydantic import BaseModel
 import torch
 import numpy as np
 from model_build import ChessModel
-from utils import fen_encoder 
+from utils import fen_encoder, parse_pgn, analyze_positions
+from api.data_models import ComplexityRequest, GameRequest
 
 app = FastAPI()
 
@@ -42,8 +43,7 @@ model_path = base_dir / "model/model.pth"
 model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
 
-class ComplexityRequest(BaseModel):
-    fen: str
+
 
 # Defining the decile-to-complexity-score mapping
 percentile_ranges = {
@@ -75,14 +75,18 @@ def map_new_prediction_to_complexity(new_prediction, percentile_ranges):
             return level
     return None  # Optionally handle predictions outside the expected range
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the Elocator API!"}
+def get_complexity_score(fen: str) -> int:
+    """
+    Get the complexity score for a given FEN string.
 
-@app.post("/complexity/")
-def get_complexity(request: ComplexityRequest):
+    Parameters:
+    - fen: The FEN string to evaluate.
+
+    Returns:
+    - The complexity score (1-10) for the FEN string.
+    """
     # Convert FEN to tensor and add a batch dimension
-    encoded_fen = fen_encoder(request.fen)
+    encoded_fen = fen_encoder(fen)
     feature_tensor = torch.tensor(encoded_fen, dtype=torch.float32).unsqueeze(0).to(device)
 
     # Make prediction
@@ -93,8 +97,57 @@ def get_complexity(request: ComplexityRequest):
     # This step is simplified; you'd adjust this based on your model's output and desired complexity interpretation
     complexity_score = map_new_prediction_to_complexity(prediction, percentile_ranges)
 
-    return {"complexity_score": complexity_score}
+    return complexity_score
 
+@app.get("/")
+def read_root():
+    return {
+        "message": "Welcome to the Elocator API!",
+    }
+
+@app.post("/complexity/")
+def get_complexity(request: ComplexityRequest):
+    '''Get the complexity score for a given FEN string.
+    
+    Parameters:
+    - request: A request object containing the FEN string to evaluate.
+    
+    Returns:
+    - A dictionary containing the complexity score for the given FEN string.
+    '''
+    response = {
+        "complexity_score": get_complexity_score(request.fen)
+    }
+    return response
+
+@app.post("/analyze-game/")
+def analyze_game(request: GameRequest):
+    '''Analyze a game for complexity scores and other metrics.
+
+    Parameters:
+    - request: A request object containing the PGN of the game to analyze.
+
+    Returns:
+    - A dictionary containing the complexity scores for the game's positions.
+    '''
+    # Parse the PGN and get the FEN strings
+    headers, FENs = parse_pgn(request.pgn)
+    complexities = [get_complexity_score(fen) for fen in FENs]
+    position_eval = analyze_positions(FENs) # score is always from whites perspective
+
+    game_headers = headers
+    game_analysis = [{
+        "fen": FENs,
+        "complexity": complexities,
+        "evaluation": position_eval
+    } for FENs, complexities, position_eval in zip(FENs, complexities, position_eval)]
+
+    response = {
+        "gameHeaders": game_headers,
+        "positionAnalysis": game_analysis
+    }
+
+    return response
 
 if __name__ == "__main__":
     import uvicorn
