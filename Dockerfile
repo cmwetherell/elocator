@@ -15,7 +15,7 @@ COPY pyproject.toml poetry.lock* /app/
 RUN poetry config virtualenvs.create false
 
 # Install dependencies using Poetry, respecting the lock file
-RUN poetry install --no-interaction --no-ansi --no-dev
+RUN poetry install --no-interaction --no-ansi --only main
 RUN pip3 install torch --index-url https://download.pytorch.org/whl/cpu
 
 # Install curl and other necessary tools (if not already installed)
