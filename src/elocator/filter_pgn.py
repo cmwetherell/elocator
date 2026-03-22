@@ -1,67 +1,147 @@
-import chess
-import chess.engine
-import io
+"""Filter caissabase.pgn to keep only classical OTB games with strong players."""
+
 import chess.pgn
+import argparse
+import sys
+import re
+from collections import Counter
 
-# engine configuration
-depth = 20
-time = 0.25
-threads = 32
+# Online/rapid/blitz indicators in Event or Site headers
+ONLINE_SITE_KEYWORDS = {
+    "int",          # chess.com INT, chess24.com INT, etc.
+    "chess.com",
+    "chess24",
+    "lichess",
+    "playchess",
+    "icc",
+    "fics",
+    "internet",
+    "online",
+}
 
-def filter_pgn(path: str) -> None:
-    """Filter a PGN file to only include games with players rated 2500+.
+FAST_EVENT_KEYWORDS = {
+    "rapid",
+    "blitz",
+    "bullet",
+    "speed",
+    "titled tue",
+    "titled tuesday",
+    "armageddon",
+    "lightning",
+}
 
-    Args:
-        path (str): Path to the PGN file.
+# Compile into a single regex for efficiency
+_online_site_re = re.compile(
+    "|".join(re.escape(kw) for kw in ONLINE_SITE_KEYWORDS), re.IGNORECASE
+)
+_fast_event_re = re.compile(
+    "|".join(re.escape(kw) for kw in FAST_EVENT_KEYWORDS), re.IGNORECASE
+)
+
+
+def is_classical_otb(game, min_elo=2000):
+    """Return True if the game is a classical over-the-board game with strong players.
+
+    Filters:
+      1. Both players must have Elo >= min_elo
+      2. Game must have a decisive or drawn result (not *)
+      3. Site must not contain online platform indicators
+      4. Event must not contain rapid/blitz/bullet keywords
+      5. Game must have at least 10 moves (skip miniatures / walkovers)
     """
-    # Open pgn file in binary mode and read
-    with open(path, 'rb') as file:
-        raw_data = file.read()
-    
-    # Decode the content with UTF-8 encoding, replace errors
-    decoded_data = raw_data.decode('utf-8', errors='replace')
+    headers = game.headers
 
-    # Use StringIO to simulate a file object from the decoded string
-    pgn = io.StringIO(decoded_data)
+    # Must have Elo headers
+    white_elo = headers.get("WhiteElo", "")
+    black_elo = headers.get("BlackElo", "")
+    if not white_elo or not black_elo or white_elo == "?" or black_elo == "?":
+        return False, "missing_elo"
 
-    # Open new file to write filtered games to
-    with open("./data/filtered.pgn", "w") as filtered_pgn:
+    try:
+        if int(white_elo) < min_elo or int(black_elo) < min_elo:
+            return False, "low_elo"
+    except ValueError:
+        return False, "bad_elo"
 
-        i = 0
+    # Must have a result
+    result = headers.get("Result", "*")
+    if result == "*":
+        return False, "no_result"
+
+    # Filter online platforms by Site
+    site = headers.get("Site", "")
+    if _online_site_re.search(site):
+        return False, "online_site"
+
+    # Filter non-classical by Event
+    event = headers.get("Event", "")
+    if _fast_event_re.search(event):
+        return False, "fast_event"
+
+    # Skip very short games (walkovers, administrative results)
+    moves = list(game.mainline_moves())
+    if len(moves) < 20:  # 10 full moves minimum
+        return False, "too_short"
+
+    return True, "pass"
+
+
+def filter_pgn(input_path, output_path, min_elo=2000, max_games=None):
+    """Stream-filter a PGN file without loading it all into memory."""
+    reject_reasons = Counter()
+    accepted = 0
+    total = 0
+
+    with open(input_path, errors='replace') as pgn_in, \
+         open(output_path, 'w') as pgn_out:
+
         while True:
-            i += 1
-            if i % 1000 == 0:
-                print("Done: ", i)
-
-            game = chess.pgn.read_game(pgn)
+            game = chess.pgn.read_game(pgn_in)
             if game is None:
                 break
 
-            # Skip game if it doesn't have necessary headers
-            if not all(key in game.headers for key in ["WhiteElo", "BlackElo", "Result"]):
-                continue
+            total += 1
 
-            # Skip if WhiteElo and BlackElo not >2500
-            if int(game.headers["WhiteElo"]) < 2500 or int(game.headers["BlackElo"]) < 2500:
-                continue
+            ok, reason = is_classical_otb(game, min_elo=min_elo)
+            if ok:
+                pgn_out.write(str(game))
+                pgn_out.write("\n\n")
+                accepted += 1
+            else:
+                reject_reasons[reason] += 1
 
-            # Skip Internet games
-            if "Site" in game.headers and "INT" in game.headers["Site"]:
-                continue
-            
-            # add newline to end of game
-            filtered_pgn.write(game.__str__())
-            filtered_pgn.write("\n\n")
+            if total % 10000 == 0:
+                print(f"  Scanned {total:,} games, accepted {accepted:,} "
+                      f"({accepted/total*100:.1f}%)", flush=True)
 
+            if max_games and accepted >= max_games:
+                print(f"Reached max_games limit ({max_games})")
+                break
 
-def main():
+    print(f"\n{'='*50}")
+    print(f"FILTER RESULTS")
+    print(f"{'='*50}")
+    print(f"Total scanned: {total:,}")
+    print(f"Accepted: {accepted:,} ({accepted/total*100:.1f}%)")
+    print(f"\nRejection reasons:")
+    for reason, count in reject_reasons.most_common():
+        print(f"  {reason:15s}: {count:,} ({count/total*100:.1f}%)")
 
-    pgn_file = "./data/scidFilter.pgn"
+    return accepted
 
-    pgn = open(pgn_file)
-
-    filter_pgn(pgn_file)
-    
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Filter PGN for classical OTB games")
+    parser.add_argument("--input", default="./data/caissabase.pgn",
+                        help="Input PGN file (default: caissabase.pgn)")
+    parser.add_argument("--output", default="./data/filtered.pgn",
+                        help="Output PGN file")
+    parser.add_argument("--min-elo", type=int, default=2000,
+                        help="Minimum Elo for both players (default: 2000)")
+    parser.add_argument("--max-games", type=int, default=None,
+                        help="Stop after accepting this many games")
+    args = parser.parse_args()
+
+    print(f"Filtering {args.input} → {args.output}")
+    print(f"Min Elo: {args.min_elo}, Max games: {args.max_games or 'unlimited'}")
+    filter_pgn(args.input, args.output, min_elo=args.min_elo, max_games=args.max_games)

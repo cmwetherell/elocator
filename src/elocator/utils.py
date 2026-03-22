@@ -7,6 +7,7 @@ import chess
 import chess.pgn
 import chess.engine
 from typing import Union, List, Tuple, Dict
+import torch
 
 default_fen = "rnbqkbnr/p1p1pppp/3p4/Pp6/8/8/1PPPPPPP/RNBQKBNR b KQkq b6 0 3"
 
@@ -83,10 +84,11 @@ def fen_encoder(fen: str) -> np.array:
     # only need to keep traxck fo 8 squares since own vs opponent
     ep_array = np.zeros(8, dtype=np.uint8)
 
-    try:
-        ep_array[convert_ep_square_to_int(ep_square)] = 1
-    except:
-        pass
+    if ep_square != "-":
+        try:
+            ep_array[convert_ep_square_to_int(ep_square)] = 1
+        except KeyError:
+            pass
 
     castling_array = np.zeros(4, dtype=np.uint8)
     if "K" in castling_rights:
@@ -145,16 +147,13 @@ def convert_ep_square_to_int(ep_square: str) -> int:
     Returns:
         int: Integer representation of the ep square.
     """
-    # Dictionary mapping ep squares to integers
+    # Dictionary mapping ep squares to integers (file index 0-7)
+    # Rank 6 = white can capture EP, Rank 3 = black can capture EP (mirrored to rank 6)
     ep_square_map = {
-        "a6": 0,
-        "b6": 1,
-        "c6": 2,
-        "d6": 3,
-        "e6": 4,
-        "f6": 5,
-        "g6": 6,
-        "h6": 7
+        "a6": 0, "b6": 1, "c6": 2, "d6": 3,
+        "e6": 4, "f6": 5, "g6": 6, "h6": 7,
+        "a3": 0, "b3": 1, "c3": 2, "d3": 3,
+        "e3": 4, "f3": 5, "g3": 6, "h3": 7,
     }
 
     return ep_square_map[ep_square]
@@ -275,7 +274,7 @@ def analyze_positions(fens: Union[str, List[str]]) -> List[float]:
     Returns:
         List[float]: Evaluation scores of the positions.
     """
-    stockfish_path = "/usr/local/bin/stockfish/stockfish-ubuntu-x86-64"
+    stockfish_path = "/opt/homebrew/bin/stockfish"
     engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
 
     # Ensure fens is a list even if a single FEN string is provided
@@ -292,6 +291,89 @@ def analyze_positions(fens: Union[str, List[str]]) -> List[float]:
 
     engine.quit()
     return evaluations
+
+# ---------------------------------
+# 1) FEN to Input Tensor
+# ---------------------------------
+
+PIECE_MAP = {
+    'P': 0,  # White Pawn
+    'N': 1,  # White Knight
+    'B': 2,  # White Bishop
+    'R': 3,  # White Rook
+    'Q': 4,  # White Queen
+    'K': 5,  # White King
+    'p': 6,  # Black Pawn
+    'n': 7,  # Black Knight
+    'b': 8,  # Black Bishop
+    'r': 9,  # Black Rook
+    'q': 10, # Black Queen
+    'k': 11, # Black King
+}
+
+def fen_to_tensor(fen: str) -> torch.Tensor:
+    """
+    Converts a FEN string into an 18x8x8 tensor:
+      [0..11]  -> one-hot planes for each piece type
+      [12]     -> side-to-move (all ones if white, zeros if black)
+      [13..16] -> castling rights [white_K, white_Q, black_K, black_Q]
+      [17]     -> en passant file (encoded across the 8 columns of the rank, else zeros)
+    
+    If you want a different channel layout (e.g., separate plane for each castling right),
+    feel free to adjust. The output is a float tensor with shape (18, 8, 8).
+    """
+    parts = fen.split()
+    board_part = parts[0]
+    side_to_move = parts[1]
+    castling_part = parts[2]
+    en_passant_part = parts[3]
+
+    # Initialize zero tensor [channels, 8, 8]
+    # We'll do 18 channels: 12 for piece type, 1 for side-to-move, 4 for castling, 1 for en passant
+    tensor = torch.zeros((18, 8, 8), dtype=torch.float32)
+
+    # 1) Fill in piece planes
+    rows = board_part.split('/')
+    for row_idx, row in enumerate(rows):
+        col_idx = 0
+        for char in row:
+            if char.isdigit():
+                # This means we have 'n' empty squares
+                col_idx += int(char)
+            else:
+                # It's a piece
+                channel = PIECE_MAP[char]
+                tensor[channel, row_idx, col_idx] = 1.0
+                col_idx += 1
+
+    # 2) Side to move
+    #    If side to move = 'w', set channel 12 to 1s. If 'b', leave it at 0.
+    if side_to_move == 'w':
+        tensor[12].fill_(1.0)
+
+    # 3) Castling rights
+    #    White K-side = channel 13, White Q-side = 14, Black K-side = 15, Black Q-side = 16
+    if 'K' in castling_part:  # White can castle short
+        tensor[13].fill_(1.0)
+    if 'Q' in castling_part:  # White can castle long
+        tensor[14].fill_(1.0)
+    if 'k' in castling_part:  # Black can castle short
+        tensor[15].fill_(1.0)
+    if 'q' in castling_part:  # Black can castle long
+        tensor[16].fill_(1.0)
+
+    # 4) En passant
+    #    If en_passant_part != '-', it indicates a file (a-h) and a rank. E.g., 'e3'.
+    #    We'll set channel 17 in the relevant square. Usually it's the 3rd or 6th rank.
+    if en_passant_part != '-':
+        file_letter = en_passant_part[0]  # e.g., 'e'
+        file_idx = ord(file_letter) - ord('a')  # 0..7
+        # We find rank (the second char in e3). Convert from chess rank to row index in [0..7].
+        rank_char = en_passant_part[1]  # e.g., '3'
+        rank_idx = 8 - int(rank_char)   # rank 1 -> row 7, rank 8 -> row 0, etc.
+        tensor[17, rank_idx, file_idx] = 1.0
+    
+    return tensor
 
 if __name__ == "__main__":
     # Example usage:
