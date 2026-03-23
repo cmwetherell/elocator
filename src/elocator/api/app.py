@@ -120,10 +120,13 @@ def _minmax_normalize(val, vmin, vmax):
 CNN_MIN, CNN_MAX = 0.0219, 21.53
 MLP_MIN, MLP_MAX = 0.599, 5.439
 
-# Percentile breakpoints calibrated on validation set (100 buckets)
-# Maps ensemble output [0, 1] → complexity score [1, 100]
-ENSEMBLE_MIN = 0.0260
-ENSEMBLE_MAX = 0.9460
+# Load percentile calibration (99 breakpoints → 100 buckets)
+import bisect
+calibration_path = base_dir / "model/complexity_calibration.json"
+with open(calibration_path) as f:
+    _calibration = json.load(f)
+BREAKPOINTS = _calibration["breakpoints"]
+print(f"Loaded {len(BREAKPOINTS)} calibration breakpoints")
 
 
 def get_ensemble_prediction(fen: str) -> float:
@@ -143,13 +146,15 @@ def get_ensemble_prediction(fen: str) -> float:
 def get_complexity_score(fen: str) -> int:
     """Get the complexity score (1-100) for a given FEN using the ensemble model.
 
+    Uses percentile-based calibration: score N means the position is more complex
+    than N% of positions in the calibration dataset (35,739 OTB games, Elo 2000+).
+
     1 = simplest positions (forced moves, clear advantages)
     100 = most complex positions (sharp middlegames, unclear compensation)
     """
     ensemble_pred = get_ensemble_prediction(fen)
-    # Linear mapping from [ENSEMBLE_MIN, ENSEMBLE_MAX] → [1, 100]
-    score = 1 + 99 * _minmax_normalize(ensemble_pred, ENSEMBLE_MIN, ENSEMBLE_MAX)
-    return max(1, min(100, round(score)))
+    score = bisect.bisect_left(BREAKPOINTS, ensemble_pred) + 1
+    return max(1, min(100, score))
 
 
 @app.get("/")
