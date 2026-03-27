@@ -274,7 +274,8 @@ def analyze_positions(fens: Union[str, List[str]]) -> List[float]:
     Returns:
         List[float]: Evaluation scores of the positions.
     """
-    stockfish_path = "/opt/homebrew/bin/stockfish"
+    import shutil
+    stockfish_path = shutil.which("stockfish") or "/opt/homebrew/bin/stockfish"
     engine = chess.engine.SimpleEngine.popen_uci(stockfish_path)
 
     # Ensure fens is a list even if a single FEN string is provided

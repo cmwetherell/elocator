@@ -24,13 +24,12 @@ RUN apt-get update && apt-get install -y \
     tar \
     && rm -rf /var/lib/apt/lists/*
 
-# Download and extract Stockfish
-RUN curl -L https://github.com/official-stockfish/Stockfish/releases/download/sf_16/stockfish-ubuntu-x86-64.tar -o stockfish.tar \
-    && tar -xf stockfish.tar -C /usr/local/bin \
-    && rm stockfish.tar
-
-# Make sure the Stockfish binary is executable
-RUN chmod +x /usr/local/bin/stockfish/stockfish-ubuntu-x86-64
+# Download Stockfish 18 and install to /usr/local/bin/stockfish
+RUN curl -sL https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-ubuntu-x86-64-avx2.tar -o /tmp/stockfish.tar \
+    && cd /tmp && tar xf stockfish.tar \
+    && cp /tmp/stockfish/stockfish-ubuntu-x86-64-avx2 /usr/local/bin/stockfish \
+    && chmod +x /usr/local/bin/stockfish \
+    && rm -rf /tmp/stockfish /tmp/stockfish.tar
 
 # Copy your source code into the container
 COPY src/ /app/
