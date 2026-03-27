@@ -1,0 +1,13 @@
+{
+  "pearson": 0.14652465070164591,
+  "spearman": 0.14042696107266,
+  "mae": 3.0528391725310744,
+  "lift": 3.104059128919272,
+  "best_epoch": 6,
+  "name": "exp5_cnn_heavy_dropout",
+  "model": "cnn",
+  "loss": "tweedie",
+  "epochs": 20,
+  "train_size": 945828,
+  "wall_hours": 5.907181411650446
+}

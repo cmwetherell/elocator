@@ -24,9 +24,9 @@ class SEBlock(nn.Module):
 
 
 class PreActResBlock(nn.Module):
-    """Pre-activation residual block with SE attention."""
+    """Pre-activation residual block with SE attention and optional stochastic depth."""
 
-    def __init__(self, channels, se_reduction=4, dropout=0.1):
+    def __init__(self, channels, se_reduction=4, dropout=0.1, drop_path=0.0):
         super().__init__()
         self.bn1 = nn.BatchNorm2d(channels)
         self.conv1 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
@@ -34,15 +34,22 @@ class PreActResBlock(nn.Module):
         self.conv2 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
         self.drop = nn.Dropout2d(dropout)
         self.se = SEBlock(channels, se_reduction)
+        self.drop_path = drop_path
 
     def forward(self, x):
         identity = x
+        # Stochastic depth: skip entire block with probability drop_path during training
+        if self.training and self.drop_path > 0.0 and torch.rand(1).item() < self.drop_path:
+            return identity
         out = F.silu(self.bn1(x))
         out = self.conv1(out)
         out = F.silu(self.bn2(out))
         out = self.conv2(out)
         out = self.drop(out)
         out = self.se(out)
+        # Scale output at inference to compensate for stochastic depth
+        if not self.training and self.drop_path > 0.0:
+            out = out * (1.0 - self.drop_path)
         return out + identity
 
 
@@ -60,17 +67,18 @@ class ChessCNNModel(nn.Module):
     """
 
     def __init__(self, channels=128, num_blocks=6, se_reduction=4,
-                 block_dropout=0.1, head_dropout=0.3):
+                 block_dropout=0.1, head_dropout=0.3, stochastic_depth=0.0):
         super().__init__()
 
         # Stem: 12 piece planes → channels
         self.stem_conv = nn.Conv2d(12, channels, 3, padding=1, bias=False)
         self.stem_bn = nn.BatchNorm2d(channels)
 
-        # Tower: residual blocks
+        # Tower: residual blocks (with linearly increasing drop path)
         self.tower = nn.ModuleList([
-            PreActResBlock(channels, se_reduction, block_dropout)
-            for _ in range(num_blocks)
+            PreActResBlock(channels, se_reduction, block_dropout,
+                          drop_path=stochastic_depth * (i / max(1, num_blocks - 1)))
+            for i in range(num_blocks)
         ])
 
         # Head

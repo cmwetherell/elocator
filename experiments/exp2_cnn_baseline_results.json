@@ -1,0 +1,13 @@
+{
+  "pearson": 0.14334197488214218,
+  "spearman": 0.13035368985130114,
+  "mae": 2.993125298302251,
+  "lift": 3.3216872452258004,
+  "best_epoch": 8,
+  "name": "exp2_cnn_baseline",
+  "model": "cnn",
+  "loss": "tweedie",
+  "epochs": 15,
+  "train_size": 945828,
+  "wall_hours": 3.8856719299819735
+}

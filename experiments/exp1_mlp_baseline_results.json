@@ -1,0 +1,13 @@
+{
+  "pearson": 0.1406398372556054,
+  "spearman": 0.13335759882338868,
+  "mae": 3.0025272700596517,
+  "lift": 3.159264096218645,
+  "best_epoch": 49,
+  "name": "exp1_mlp_baseline",
+  "model": "mlp",
+  "loss": "mse",
+  "epochs": 50,
+  "train_size": 945828,
+  "wall_hours": 4.557765518095758
+}

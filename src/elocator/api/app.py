@@ -95,9 +95,9 @@ if torch.backends.mps.is_available():
     except RuntimeError:
         print("MPS device not recognized, defaulting to CPU")
 
-# CNN: SE-ResNet with heavy dropout (Tweedie-trained)
-cnn_model = ChessCNNModel(block_dropout=0.3, head_dropout=0.5)
-cnn_path = base_dir / "model/cnn_heavy_dropout.pth"
+# CNN: SE-ResNet with stochastic depth (Tweedie-trained, 1.18M positions)
+cnn_model = ChessCNNModel(stochastic_depth=0.3)
+cnn_path = base_dir / "model/cnn_stochastic_depth.pth"
 cnn_model.load_state_dict(torch.load(cnn_path, map_location=device))
 cnn_model.to(device)
 cnn_model.eval()

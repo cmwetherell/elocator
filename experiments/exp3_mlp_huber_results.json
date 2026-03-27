@@ -1,0 +1,13 @@
+{
+  "pearson": 0.13788750917626602,
+  "spearman": 0.14056033539453192,
+  "mae": 3.0289571338228924,
+  "lift": 3.042073575733122,
+  "best_epoch": 46,
+  "name": "exp3_mlp_huber",
+  "model": "mlp",
+  "loss": "huber",
+  "epochs": 50,
+  "train_size": 945828,
+  "wall_hours": 2.4092916013797123
+}
