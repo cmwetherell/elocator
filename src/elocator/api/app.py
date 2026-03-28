@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from model_cnn import ChessCNNModel
+from model_cnn import ChessCNNModel, AttentionCNN
 from utils import fen_to_tensor, fen_encoder, parse_pgn, analyze_positions
 from api.data_models import ComplexityRequest, GameRequest
 import logging
@@ -96,11 +96,18 @@ if torch.backends.mps.is_available():
         print("MPS device not recognized, defaulting to CPU")
 
 # CNN: SE-ResNet with stochastic depth (Tweedie-trained, 1.18M positions)
-cnn_model = ChessCNNModel(stochastic_depth=0.3)
-cnn_path = base_dir / "model/cnn_stochastic_depth.pth"
-cnn_model.load_state_dict(torch.load(cnn_path, map_location=device))
-cnn_model.to(device)
-cnn_model.eval()
+cnn_sd_model = ChessCNNModel(stochastic_depth=0.3)
+cnn_sd_path = base_dir / "model/cnn_stochastic_depth.pth"
+cnn_sd_model.load_state_dict(torch.load(cnn_sd_path, map_location=device))
+cnn_sd_model.to(device)
+cnn_sd_model.eval()
+
+# Attention CNN: dual pooling (attention + GAP) with stochastic depth
+attn_cnn_model = AttentionCNN(stochastic_depth=0.3)
+attn_cnn_path = base_dir / "model/attention_cnn.pth"
+attn_cnn_model.load_state_dict(torch.load(attn_cnn_path, map_location=device))
+attn_cnn_model.to(device)
+attn_cnn_model.eval()
 
 # MLP: Original architecture retrained on D20 data
 mlp_model = ChessModel(780)
@@ -109,16 +116,12 @@ mlp_model.load_state_dict(torch.load(mlp_path, map_location=device))
 mlp_model.to(device)
 mlp_model.eval()
 
-print(f"Ensemble loaded on {device}: CNN (1.9M params) + MLP (12.3M params)")
+print(f"3-way ensemble loaded on {device}: CNN SD + Attn CNN + MLP")
 
 def _minmax_normalize(val, vmin, vmax):
     """Normalize a single value given precomputed min/max."""
     return (val - vmin) / (vmax - vmin) if vmax > vmin else 0.5
 
-
-# Precomputed min/max from validation set for ensemble normalization
-CNN_MIN, CNN_MAX = 0.0219, 21.53
-MLP_MIN, MLP_MAX = 0.599, 5.439
 
 # Load percentile calibration (99 breakpoints → 100 buckets)
 import bisect
@@ -128,19 +131,26 @@ with open(calibration_path) as f:
 BREAKPOINTS = _calibration["breakpoints"]
 print(f"Loaded {len(BREAKPOINTS)} calibration breakpoints")
 
+# Min/max from validation set for 3-way ensemble normalization
+SD_MIN, SD_MAX = _calibration["sd_min"], _calibration["sd_max"]
+ATTN_MIN, ATTN_MAX = _calibration["attn_min"], _calibration["attn_max"]
+MLP_MIN, MLP_MAX = _calibration["mlp_min"], _calibration["mlp_max"]
+
 
 def get_ensemble_prediction(fen: str) -> float:
-    """Get raw ensemble prediction for a FEN. Returns value in [0, ~1] range."""
+    """Get raw 3-way ensemble prediction for a FEN. Returns value in [0, ~1] range."""
     cnn_tensor = fen_to_tensor(fen).unsqueeze(0).to(device)
     mlp_tensor = torch.tensor(fen_encoder(fen), dtype=torch.float32).unsqueeze(0).to(device)
 
     with torch.no_grad():
-        cnn_pred = cnn_model(cnn_tensor).squeeze().item()
+        sd_pred = cnn_sd_model(cnn_tensor).squeeze().item()
+        attn_pred = attn_cnn_model(cnn_tensor).squeeze().item()
         mlp_pred = mlp_model(mlp_tensor).squeeze().item() * 100  # sigmoid → raw scale
 
-    cnn_norm = _minmax_normalize(cnn_pred, CNN_MIN, CNN_MAX)
+    sd_norm = _minmax_normalize(sd_pred, SD_MIN, SD_MAX)
+    attn_norm = _minmax_normalize(attn_pred, ATTN_MIN, ATTN_MAX)
     mlp_norm = _minmax_normalize(mlp_pred, MLP_MIN, MLP_MAX)
-    return (cnn_norm + mlp_norm) / 2
+    return (sd_norm + attn_norm + mlp_norm) / 3
 
 
 def get_complexity_score(fen: str) -> int:

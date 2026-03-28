@@ -53,6 +53,90 @@ class PreActResBlock(nn.Module):
         return out + identity
 
 
+class AttentionPool(nn.Module):
+    """Learned spatial attention pooling — focuses on squares that matter."""
+    def __init__(self, channels):
+        super().__init__()
+        self.attn_conv = nn.Sequential(
+            nn.Conv2d(channels, channels // 4, 1),
+            nn.SiLU(),
+            nn.Conv2d(channels // 4, 1, 1),
+        )
+
+    def forward(self, x):
+        # x: (B, C, 8, 8)
+        attn_weights = self.attn_conv(x)       # (B, 1, 8, 8)
+        attn_weights = attn_weights.view(x.shape[0], -1)  # (B, 64)
+        attn_weights = F.softmax(attn_weights, dim=1)      # (B, 64)
+        attn_weights = attn_weights.view(x.shape[0], 1, 8, 8)  # (B, 1, 8, 8)
+
+        # Weighted spatial average
+        pooled = (x * attn_weights).sum(dim=[2, 3])  # (B, C)
+        return pooled
+
+
+class AttentionCNN(nn.Module):
+    """CNN with attention pooling instead of GAP."""
+    def __init__(self, channels=128, num_blocks=6, block_dropout=0.1,
+                 head_dropout=0.3, stochastic_depth=0.3):
+        super().__init__()
+        self.stem_conv = nn.Conv2d(12, channels, 3, padding=1, bias=False)
+        self.stem_bn = nn.BatchNorm2d(channels)
+
+        self.tower = nn.ModuleList([
+            PreActResBlock(channels, 4, block_dropout,
+                          drop_path=stochastic_depth * (i / max(1, num_blocks - 1)))
+            for i in range(num_blocks)
+        ])
+
+        self.head_bn = nn.BatchNorm2d(channels)
+        self.attn_pool = AttentionPool(channels)
+        self.gap = nn.AdaptiveAvgPool2d(1)
+
+        meta_size = 12
+        # 128 (attn) + 128 (gap) + 12 (meta) = 268
+        self.head_mlp = nn.Sequential(
+            nn.Linear(channels * 2 + meta_size, 256),
+            nn.SiLU(),
+            nn.Dropout(head_dropout),
+            nn.Linear(256, 64),
+            nn.SiLU(),
+            nn.Dropout(head_dropout),
+            nn.Linear(64, 1),
+            nn.Softplus(),
+        )
+        self._init_weights()
+
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x):
+        board = x[:, 0:12]
+        side = x[:, 12, 0, 0].unsqueeze(1)
+        castling = x[:, 13:17, 0, 0]
+        ep = x[:, 17].sum(dim=1)[:, :7]
+        metadata = torch.cat([side, castling, ep], dim=1)
+
+        h = F.silu(self.stem_bn(self.stem_conv(board)))
+        for block in self.tower:
+            h = block(h)
+        h = F.silu(self.head_bn(h))
+
+        # Dual pooling: attention + global average
+        h_attn = self.attn_pool(h)       # (B, 128) — focused on important squares
+        h_gap = self.gap(h).flatten(1)    # (B, 128) — global context
+        h = torch.cat([h_attn, h_gap, metadata], dim=1)  # (B, 268)
+
+        return self.head_mlp(h)
+
+
 class ChessCNNModel(nn.Module):
     """
     Hybrid CNN for chess position complexity prediction.
