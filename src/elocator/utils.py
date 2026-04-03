@@ -286,7 +286,7 @@ def analyze_positions(fens: Union[str, List[str]]) -> List[float]:
 
     for fen in fens:
         board = chess.Board(fen)
-        info = engine.analyse(board, chess.engine.Limit(depth=20, time=10))
+        info = engine.analyse(board, chess.engine.Limit(depth=16, time=8))
         evaluation = info["score"].white().score(mate_score=10000)  # Use a large number for mate score
         evaluations.append(evaluation if evaluation is not None else 0)
 
