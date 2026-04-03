@@ -264,34 +264,33 @@ def parse_pgn(pgn: str) -> Tuple[Dict, List]: # type: ignore
         FENs.append(board.fen())
     return headers, FENs
 
-def analyze_positions(fens: Union[str, List[str]]) -> List[float]:
-    # TODO: Combine this with the FEN generator so we dont make a billion chess boards.
-    """Analyze a position or positions and return the evaluation scores.
-
-    Args:
-        fens (Union[str, List[str]]): A single FEN string or a list of FEN strings of the positions.
-
-    Returns:
-        List[float]: Evaluation scores of the positions.
-    """
-    import shutil
-    stockfish_path = shutil.which("stockfish") or "/opt/homebrew/bin/stockfish"
-    engine = chess.engine.SimpleEngine.popen_uci(stockfish_path, timeout=60)
-
-    # Ensure fens is a list even if a single FEN string is provided
-    if isinstance(fens, str):
-        fens = [fens]
-
-    evaluations = []
-
-    for fen in fens:
-        board = chess.Board(fen)
-        info = engine.analyse(board, chess.engine.Limit(depth=16, time=8))
-        evaluation = info["score"].white().score(mate_score=10000)  # Use a large number for mate score
-        evaluations.append(evaluation if evaluation is not None else 0)
-
-    engine.quit()
-    return evaluations
+# Stockfish eval removed for performance — uncomment to restore
+# def analyze_positions(fens: Union[str, List[str]]) -> List[float]:
+#     """Analyze a position or positions and return the evaluation scores.
+#
+#     Args:
+#         fens (Union[str, List[str]]): A single FEN string or a list of FEN strings of the positions.
+#
+#     Returns:
+#         List[float]: Evaluation scores of the positions.
+#     """
+#     import shutil
+#     stockfish_path = shutil.which("stockfish") or "/opt/homebrew/bin/stockfish"
+#     engine = chess.engine.SimpleEngine.popen_uci(stockfish_path, timeout=60)
+#
+#     if isinstance(fens, str):
+#         fens = [fens]
+#
+#     evaluations = []
+#
+#     for fen in fens:
+#         board = chess.Board(fen)
+#         info = engine.analyse(board, chess.engine.Limit(depth=16, time=8))
+#         evaluation = info["score"].white().score(mate_score=10000)
+#         evaluations.append(evaluation if evaluation is not None else 0)
+#
+#     engine.quit()
+#     return evaluations
 
 # ---------------------------------
 # 1) FEN to Input Tensor

@@ -14,7 +14,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from model_cnn import ChessCNNModel, AttentionCNN
-from utils import fen_to_tensor, fen_encoder, parse_pgn, analyze_positions
+from utils import fen_to_tensor, fen_encoder, parse_pgn
+# from utils import analyze_positions  # Stockfish eval removed for performance
 from api.data_models import ComplexityRequest, GameRequest
 import logging
 import time
@@ -190,14 +191,15 @@ def analyze_game(request: GameRequest):
     '''Analyze a game for complexity scores and other metrics.'''
     headers, FENs = parse_pgn(request.pgn)
     complexities = [get_complexity_score(fen) for fen in FENs]
-    position_eval = analyze_positions(FENs)
+    # Stockfish eval removed for performance — uncomment to restore
+    # position_eval = analyze_positions(FENs)
 
     game_headers = headers
     game_analysis = [{
-        "fen": FENs,
-        "complexity": complexities,
-        "evaluation": position_eval
-    } for FENs, complexities, position_eval in zip(FENs, complexities, position_eval)]
+        "fen": fen,
+        "complexity": complexity,
+        # "evaluation": eval_score
+    } for fen, complexity in zip(FENs, complexities)]
 
     response = {
         "gameHeaders": game_headers,
