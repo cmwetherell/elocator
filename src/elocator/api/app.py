@@ -45,7 +45,10 @@ app.add_middleware(LoggingMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://www.pawnalyze.com",
+        "https://pawnalyze.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
