@@ -1,3 +1,47 @@
-data
-.venv
-__pycache__
+# Data (too large for git — see README for download instructions)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+
+# Model weights & large binaries
+*.pth
+*.pkl
+*.pt
+*.pgn
+*.pgn.zst
+*.pgn.zst.crdownload
+
+# Internal docs
+SECRET_MASTER_PLAN.md
+
+# Paper (separate submission)
+paper/
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Paper build artifacts
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
+paper/*.fdb_latexmk
+paper/*.fls
+
+# Experiments (large model files — results JSONs are kept)
+experiments/*.pth
+experiments/*.log
+experiments/*.png
