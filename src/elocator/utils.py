@@ -276,7 +276,7 @@ def analyze_positions(fens: Union[str, List[str]]) -> List[float]:
     """
     import shutil
     stockfish_path = shutil.which("stockfish") or "/opt/homebrew/bin/stockfish"
-    engine = chess.engine.SimpleEngine.popen_uci(stockfish_path, timeout=30)
+    engine = chess.engine.SimpleEngine.popen_uci(stockfish_path, timeout=60)
 
     # Ensure fens is a list even if a single FEN string is provided
     if isinstance(fens, str):
@@ -286,7 +286,7 @@ def analyze_positions(fens: Union[str, List[str]]) -> List[float]:
 
     for fen in fens:
         board = chess.Board(fen)
-        info = engine.analyse(board, chess.engine.Limit(depth=20))  # Adjust time limit as needed
+        info = engine.analyse(board, chess.engine.Limit(depth=12, time=5))
         evaluation = info["score"].white().score(mate_score=10000)  # Use a large number for mate score
         evaluations.append(evaluation if evaluation is not None else 0)
 
