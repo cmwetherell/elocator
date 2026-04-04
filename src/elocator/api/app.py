@@ -142,8 +142,18 @@ ATTN_MIN, ATTN_MAX = _calibration["attn_min"], _calibration["attn_max"]
 MLP_MIN, MLP_MAX = _calibration["mlp_min"], _calibration["mlp_max"]
 
 
+def normalize_fen(fen: str) -> str:
+    """Pad a partial FEN with default fields if missing."""
+    parts = fen.strip().split()
+    defaults = ["w", "-", "-", "0", "1"]
+    while len(parts) < 6:
+        parts.append(defaults[len(parts) - 1])
+    return " ".join(parts)
+
+
 def get_ensemble_prediction(fen: str) -> float:
     """Get raw 3-way ensemble prediction for a FEN. Returns value in [0, ~1] range."""
+    fen = normalize_fen(fen)
     cnn_tensor = fen_to_tensor(fen).unsqueeze(0).to(device)
     mlp_tensor = torch.tensor(fen_encoder(fen), dtype=torch.float32).unsqueeze(0).to(device)
 
